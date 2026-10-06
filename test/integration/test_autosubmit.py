@@ -26,7 +26,6 @@ import pytest
 
 from autosubmit.config.basicconfig import BasicConfig
 from autosubmit.config.configcommon import AutosubmitConfig
-from autosubmit.config.yamlparser import YAMLParserFactory
 from autosubmit.database.db_common import (
     get_experiment_description,
     update_experiment_description_version,
@@ -339,11 +338,7 @@ def test_update_version(as_db: str, autosubmit_exp):
     assert update_experiment_description_version(exp.expid, version=new_version)
     exp.as_conf.set_version(new_version)
 
-    as_conf = AutosubmitConfig(
-        exp.expid,
-        BasicConfig,
-        YAMLParserFactory(),
-    )
+    as_conf = AutosubmitConfig(exp.expid)
     as_conf.reload(force_load=True)
 
     # TODO: We probably should test that the DB value is correct as well?
@@ -614,11 +609,7 @@ def test_monitor_with_check_wrapper(autosubmit_exp):
     """Test that ``monitor`` loads wrapper packages when requested."""
     exp = autosubmit_exp(include_jobs=True)
 
-    as_conf = AutosubmitConfig(
-        exp.expid,
-        BasicConfig,
-        YAMLParserFactory(),
-    )
+    as_conf = AutosubmitConfig(exp.expid)
     as_conf.check_conf_files(True)
 
     job_list = load_job_list(
@@ -647,11 +638,7 @@ def test_set_status_with_detail(autosubmit_exp):
     """Test that ``set_status`` prints the job list when detail is requested."""
     exp = autosubmit_exp(include_jobs=True)
 
-    as_conf = AutosubmitConfig(
-        exp.expid,
-        BasicConfig,
-        YAMLParserFactory(),
-    )
+    as_conf = AutosubmitConfig(exp.expid)
     as_conf.check_conf_files(True)
 
     job_list = load_job_list(

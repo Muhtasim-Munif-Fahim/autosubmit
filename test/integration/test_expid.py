@@ -123,7 +123,7 @@ def test_copy_expid_with_main_yaml(tmp_path: Path, autosubmit_exp):
         experiment_data={"JOBS": {"A": {"SCRIPT": "true", "PLATFORM": "LOCAL"}}},
         create=False,
     )
-    exp_path = Path(exp.as_conf.basic_config.LOCAL_ROOT_DIR, exp.expid)
+    exp_path = Path(BasicConfig.LOCAL_ROOT_DIR, exp.expid)
     main_yaml_path = exp_path / "conf/main.yaml"
     with open(main_yaml_path, "w+") as f:
         f.write(
@@ -134,6 +134,7 @@ def test_copy_expid_with_main_yaml(tmp_path: Path, autosubmit_exp):
                 PLATFORM: LOCAL
         """)
         )
+    exp.as_conf.reload(force_load=True)
 
     assert 0 == create(exp.expid, noplot=True, hide=True)
     with open(tmp_path / f"{exp.expid}/conf/metadata/experiment_data.yml") as f:
@@ -142,7 +143,7 @@ def test_copy_expid_with_main_yaml(tmp_path: Path, autosubmit_exp):
         assert {"A", "B"} <= set(yaml_data["JOBS"].keys())
 
     new_expid = expid_fn("test", hpc="local", copy_id=exp.expid)
-    new_exp_path = Path(exp.as_conf.basic_config.LOCAL_ROOT_DIR, new_expid)
+    new_exp_path = Path(BasicConfig.LOCAL_ROOT_DIR, new_expid)
     new_main_yaml_path = new_exp_path / "conf/main.yaml"
 
     assert new_main_yaml_path.exists()
@@ -461,7 +462,7 @@ def test_copy_expid_with_flag_hpc(
 
     code-block:: console
 
-        autosubmit expid -H ithaca -d "experiment"
+        autosubmit expid -H marenostrum -d "experiment"
         autosubmit expid -H "" -d "experiment"
 
     :param expected_hpc: The value it is expected for the variable hpc.
@@ -800,7 +801,7 @@ def test_autosubmit_generate_config_non_dict_parameters(
 def test_expid_generated_correctly(tmp_path, autosubmit_exp):
     install()
     as_exp = autosubmit_exp(experiment_data=_get_experiment_data(tmp_path))
-    run_dir = as_exp.as_conf.basic_config.LOCAL_ROOT_DIR
+    run_dir = BasicConfig.LOCAL_ROOT_DIR
     inspect(
         expid=f"{as_exp.expid}",
         check_wrapper=True,
@@ -833,7 +834,7 @@ def test_expid_generated_correctly(tmp_path, autosubmit_exp):
 def test_delete_experiment(mocker, tmp_path, autosubmit_exp):
     install()
     as_exp = autosubmit_exp(experiment_data=_get_experiment_data(tmp_path))
-    run_dir = as_exp.as_conf.basic_config.LOCAL_ROOT_DIR
+    run_dir = BasicConfig.LOCAL_ROOT_DIR
     mocker.patch(
         "autosubmit.experiment.manage.process_id", return_value=None
     )
@@ -904,12 +905,11 @@ def test_perform_deletion(mocker, tmp_path, autosubmit_exp):
     mocker.patch(
         "autosubmit.experiment.manage.rmtree", side_effect=FileNotFoundError
     )
-    basic_config = as_exp.as_conf.basic_config
-    experiment_path = Path(basic_config.LOCAL_ROOT_DIR, as_exp.expid)
+    experiment_path = Path(BasicConfig.LOCAL_ROOT_DIR, as_exp.expid)
     structure_db_path = Path(
-        basic_config.STRUCTURES_DIR, f"structure_{as_exp.expid}.db"
+        BasicConfig.STRUCTURES_DIR, f"structure_{as_exp.expid}.db"
     )
-    job_data_db_path = Path(basic_config.JOBDATA_DIR, f"job_data_{as_exp.expid}")
+    job_data_db_path = Path(BasicConfig.JOBDATA_DIR, f"job_data_{as_exp.expid}")
     if all(
         "tmp" not in path
         for path in [

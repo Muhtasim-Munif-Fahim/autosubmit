@@ -30,6 +30,7 @@ import paramiko
 import pytest
 from paramiko import ChannelFile  # type: ignore[import]
 
+from autosubmit.config.basicconfig import BasicConfig
 from autosubmit.job.job import Job
 from autosubmit.job.job_common import Status
 from autosubmit.log.log import AutosubmitCritical, AutosubmitError
@@ -1041,7 +1042,7 @@ def test_failed_connection_raises_as_error(
     """Test that failing to restore a connection, even with retries, results in ``AutosubmitError``."""
     exp = autosubmit_exp()
     platform_config = {
-        "LOCAL_ROOT_DIR": exp.as_conf.basic_config.LOCAL_ROOT_DIR,
+        "LOCAL_ROOT_DIR": BasicConfig.LOCAL_ROOT_DIR,
         "LOCAL_TMP_DIR": str(tmp_path),
         "LOCAL_ASLOG_DIR": str(tmp_path)
     }

@@ -21,12 +21,11 @@ import configparser
 import io
 import multiprocessing
 import os
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator
 from contextlib import suppress
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from time import time_ns
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -37,7 +36,7 @@ from testcontainers.community.postgres import PostgresContainer  # type: ignore
 from testcontainers.core.container import DockerContainer  # type: ignore
 
 from autosubmit.config.basicconfig import BasicConfig
-from autosubmit.config.configcommon import AutosubmitConfig
+from autosubmit.config.registry import load_config
 from autosubmit.experiment.manage import create as create_fn
 from autosubmit.experiment.manage import expid_fn
 from autosubmit.experiment.utils import next_experiment_id
@@ -71,6 +70,9 @@ if TYPE_CHECKING:
     from pytest import FixtureRequest
     from pytest_mock import MockerFixture
 
+    from autosubmit.config.configcommon import AutosubmitConfig
+
+
 _PG_USER = 'postgres'
 _PG_PASSWORD = 'postgres'
 _PG_DATABASE = 'autosubmit_test'
@@ -80,7 +82,7 @@ _PG_DATABASE = 'autosubmit_test'
 class AutosubmitExperiment:
     """This holds information about an experiment created by Autosubmit."""
     expid: str
-    as_conf: AutosubmitConfig
+    as_conf: "AutosubmitConfig"
     exp_path: Path
     tmp_dir: Path
     aslogs_dir: Path
@@ -232,11 +234,12 @@ def autosubmit_exp(
         job_data_dir = Path(BasicConfig.JOBDATA_DIR)
         job_data_dir.mkdir(parents=True, exist_ok=True)
 
-        config = AutosubmitConfig(
-            expid=expid,
-            basic_config=BasicConfig
-        )
-        config.reload(force_load=True)
+        config = load_config(expid)
+        # Here, the AutosubmitConfig has probably been already initialised by the
+        # ``expid`` command issued earlier. This should not happen in normal operations
+        # of Autosubmit, as the user will issue ``expid``, then ``create``, ``run ``...
+        # Hence, this reload forcing everything to be reloaded is an exception for tests!
+        config.reload(force_load=True, only_experiment_data=False)
 
         # Remove original files. So we can save a new file with all the memory modifications.
         for f in conf_dir.iterdir():
@@ -273,7 +276,7 @@ def autosubmit_exp(
             with open(conf_dir / 'additional_data.yml', 'w') as fh:
                 YAML().dump(other_yaml, fh)
 
-        config.reload(force_load=True)
+        config.reload(force_load=True, only_experiment_data=False)
 
         platform_config = {
             "LOCAL_ROOT_DIR": BasicConfig.LOCAL_ROOT_DIR,
@@ -307,24 +310,6 @@ def autosubmit_exp(
         )
 
     return _create_autosubmit_exp
-
-
-@pytest.fixture
-def paramiko_platform() -> Iterator[ParamikoPlatform]:
-    local_root_dir = TemporaryDirectory()
-    config = {
-        "LOCAL_ROOT_DIR": local_root_dir.name,
-        "LOCAL_TMP_DIR": 'tmp'
-    }
-    platform = ParamikoPlatform(expid='a000', name='local', config=config)
-    platform.job_status = {
-        'COMPLETED': [],
-        'RUNNING': [],
-        'QUEUING': [],
-        'FAILED': []
-    }
-    yield platform
-    local_root_dir.cleanup()
 
 
 @pytest.fixture(scope="function")
@@ -614,7 +599,8 @@ def fake_smtp_server() -> Generator[tuple[int, str], None, None]:
 
 @pytest.fixture
 def configured_mail(
-        fake_smtp_server: tuple[int, str]
+        fake_smtp_server: tuple[int, str],
+        monkeypatch
 ) -> Callable[['AutosubmitExperiment'], tuple[int, str]]:
     """Factory that points an experiment's ``BasicConfig`` at the fake SMTP server.
 
@@ -630,9 +616,8 @@ def configured_mail(
     smtp_port, api_base = fake_smtp_server
 
     def _configure(autosubmit_experiment: 'AutosubmitExperiment') -> tuple[int, str]:
-        basic_config = autosubmit_experiment.as_conf.basic_config
-        basic_config.MAIL_FROM = 'notifier@localhost'
-        basic_config.SMTP_SERVER = f'127.0.0.1:{smtp_port}'
+        monkeypatch.setattr(BasicConfig, 'MAIL_FROM', 'notifier@localhost')
+        monkeypatch.setattr(BasicConfig, 'SMTP_SERVER', f'127.0.0.1:{smtp_port}')
         return smtp_port, api_base
 
     return _configure
