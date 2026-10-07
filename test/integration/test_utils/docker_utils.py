@@ -16,7 +16,6 @@
 # along with Autosubmit.  If not, see <http://www.gnu.org/licenses/>.
 
 """Utilities for Docker."""
-import multiprocessing
 from getpass import getuser
 from os import environ
 from pathlib import Path
@@ -372,8 +371,6 @@ def prepare_and_test_ssh_container(
     if exit_code != 0:
         raise RuntimeError(f'Failed to write authorized_keys to test container {container.get_wrapped_container().id}')
 
-    mocker.patch('autosubmit.platforms.platform.Platform.get_mp_context',
-                 return_value = multiprocessing.get_context('fork'))
     mock_ssh_config_and_client(ssh_config, ssh_port, _SSH_DOCKER_PASSWORD, mocker)
 
 

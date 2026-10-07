@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with Autosubmit.  If not, see <http://www.gnu.org/licenses/>.
 
-import multiprocessing as mp
 import os
 import pwd
 import time
@@ -44,13 +43,9 @@ def as_conf(prepare_test, mocker):
     return as_conf
 
 
-def test_log_recovery_no_keep_alive(prepare_test, local, mocker, as_conf):
+def test_log_recovery_no_keep_alive(prepare_test, local, as_conf):
     # Exercise the production start method. Spawn starts a fresh interpreter,
     # which is also the path that needs separate coverage collection.
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("spawn"),
-    )
     local.config["LOG_RECOVERY_TIMEOUT"] = 1
 
     local.spawn_log_retrieval_process(as_conf)
@@ -67,11 +62,7 @@ def test_log_recovery_no_keep_alive(prepare_test, local, mocker, as_conf):
     local.cleanup_event.set()
 
 
-def test_log_recovery_keep_alive(prepare_test, local, mocker, as_conf):
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
+def test_log_recovery_keep_alive(prepare_test, local, as_conf):
     local.config["LOG_RECOVERY_TIMEOUT"] = 1
     local.spawn_log_retrieval_process(as_conf)
     assert local.log_recovery_process.is_alive()
@@ -84,11 +75,7 @@ def test_log_recovery_keep_alive(prepare_test, local, mocker, as_conf):
     assert local.log_recovery_process.is_alive() is False
 
 
-def test_log_recovery_keep_alive_cleanup(prepare_test, local, mocker, as_conf):
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
+def test_log_recovery_keep_alive_cleanup(prepare_test, local, as_conf):
     local.config["LOG_RECOVERY_TIMEOUT"] = 0
     local.spawn_log_retrieval_process(as_conf)
     local.cleanup_event.set()
@@ -102,10 +89,6 @@ def test_log_recovery_keep_alive_cleanup(prepare_test, local, mocker, as_conf):
 def test_log_recovery_recover_log(prepare_test, local, mocker, as_conf):
     print(prepare_test.strpath)
     mocker.patch("autosubmit.platforms.platform.max", return_value=0)
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
     local.config["LOG_RECOVERY_TIMEOUT"] = 1
     mocker.patch("autosubmit.job.job.Job.write_stats")
     local.spawn_log_retrieval_process(as_conf)
@@ -149,16 +132,11 @@ def test_wait_for_work(
     prepare_test,
     local,
     as_conf,
-    mocker,
     cleanup_event,
     work_event,
     recovery_queue_full,
     result,
 ):
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
     local.config["LOG_RECOVERY_TIMEOUT"] = 2
     # This is needed, because in this occasion we are testing the function from the main process
     local.keep_alive_timeout = 2
@@ -174,11 +152,7 @@ def test_wait_for_work(
     assert process_log == result
 
 
-def test_unique_elements(local, mocker):
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
+def test_unique_elements(local):
     max_items = 3
     local.prepare_process()
     local.recovery_queue = CopyQueue(ctx=local.ctx)
@@ -283,12 +257,8 @@ def test_create_a_new_copy(local, pjm, slurm, ps_platform, ecaccess):
     assert ecaccess.create_a_new_copy().name == ecaccess.name
 
 
-def test_worker_events_no_duplicates(local, mocker):
+def test_worker_events_no_duplicates(local):
     """Verify that update_workers() does not add the same event twice."""
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
     Platform.worker_events.clear()
     local.prepare_process()
     # prepare_process adds one event; verify adding the same one again doesn't duplicate
@@ -301,10 +271,6 @@ def test_worker_events_no_duplicates(local, mocker):
 
 def test_add_job_to_log_recover_failure_does_not_increment_updated_log(local, mocker):
     """Verify that when recovery_queue.put fails, updated_log is NOT incremented."""
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
     local.prepare_process()
     local.recovery_queue = CopyQueue(ctx=local.ctx)
     job = Job("t000", "0000", Status.COMPLETED, 0)
@@ -334,12 +300,8 @@ def test_add_job_to_log_recover_no_queue(local):
     assert job.updated_log == 0
 
 
-def test_clean_log_recovery_process_with_dead_child(local, as_conf, mocker):
+def test_clean_log_recovery_process_with_dead_child(local, as_conf):
     """Verify cleanup does not hang when child has crashed."""
-    mocker.patch(
-        "autosubmit.platforms.platform.Platform.get_mp_context",
-        return_value=mp.get_context("fork"),
-    )
     local.config["LOG_RECOVERY_TIMEOUT"] = 1
     local.spawn_log_retrieval_process(as_conf)
     assert local.log_recovery_process.is_alive()

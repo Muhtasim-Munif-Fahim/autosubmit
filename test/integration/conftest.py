@@ -19,7 +19,6 @@
 
 import configparser
 import io
-import multiprocessing
 import os
 from collections.abc import Callable, Generator, Iterator
 from contextlib import suppress
@@ -410,10 +409,6 @@ def slurm_server(request, tmp_path, mocker: "MockerFixture") -> Generator["Conta
     """Function-scoped fixture that creates a Slurm server container per test."""
     # Patch multiprocessing start method to 'fork' in test environment so child worker processes
     # inherit active pytest fixtures, monkeypatches, and in-memory mock dispatchers (Platform defaults to 'spawn').
-    mocker.patch(
-        'autosubmit.platforms.platform.Platform.get_mp_context',
-        return_value=multiprocessing.get_context('fork')
-    )
     container, ssh_port = get_slurm_container()
     with container:
         prepare_and_test_slurm_container(container, ssh_port, Path(tmp_path, 'ssh/'), mocker)

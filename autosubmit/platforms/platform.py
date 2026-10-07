@@ -180,13 +180,14 @@ class Platform(ABC):
         """
         self._atexit_registered = False
         self.processed_wrapper_logs = None
-        self.ctx = self.get_mp_context()
+        self.ctx = multiprocessing.get_context("spawn")
         self.connected = False
         self.expid: str = expid
         self._name: str = name
         self.config = config
-        self.tmp_path = os.path.join(
-            self.config.get("LOCAL_ROOT_DIR", ""), self.expid, self.config.get("LOCAL_TMP_DIR", ""))
+        self.tmp_path = str(
+            Path(self.config.get("LOCAL_ROOT_DIR", "")) / self.expid / self.config.get("LOCAL_TMP_DIR", "")
+        )
         self._serial_platform = None
         self._serial_queue = None
         self._serial_partition = None
@@ -225,10 +226,9 @@ class Platform(ABC):
         self._submit_cmd_x11 = None
         self._checkhost_cmd = None
         self.cancel_cmd = None
-        self.otp_timeout = None
-        self.otp_timeout = self.config.get("PLATFORMS", {}).get(self.name.upper(), {}).get("2FA_TIMEOUT", 60 * 5)
-        self.two_factor_auth = self.config.get("PLATFORMS", {}).get(self.name.upper(), {}).get("2FA", False)
-        self.two_factor_method = self.config.get("PLATFORMS", {}).get(self.name.upper(), {}).get("2FA_METHOD", "token")
+        self.otp_timeout = self.platform_config.get("2FA_TIMEOUT", 60 * 5)
+        self.two_factor_auth = self.platform_config.get("2FA", False)
+        self.two_factor_method = self.platform_config.get("2FA_METHOD", "token")
         if auth_password is not None and self.two_factor_auth:
             if isinstance(auth_password, list):
                 self.pw: str | None = auth_password[0]
@@ -248,23 +248,21 @@ class Platform(ABC):
         self.compression_level = 9
         log_queue_size = 200
         if self.config:
-            platform_config: dict = self.config.get("PLATFORMS", {}).get(self.name.upper(), {})
             # We still support TOTALJOBS and TOTAL_JOBS for backwards compatibility... # TODO change in 4.2, I think
             default_queue_size = self.config.get("CONFIG", {}).get("LOG_RECOVERY_QUEUE_SIZE", 100)
-            platform_default_queue_size = self.config.get("PLATFORMS", {}).get(self.name.upper(), {}).get(
+            platform_default_queue_size = self.platform_config.get(
                 "LOG_RECOVERY_QUEUE_SIZE", default_queue_size)
             config_total_jobs = self.config.get("CONFIG", {}).get("TOTAL_JOBS", platform_default_queue_size)
             platform_total_jobs = self.config.get("PLATFORMS", {}).get('TOTAL_JOBS', config_total_jobs)
             log_queue_size = int(platform_total_jobs) * 2
-            self.compress_remote_logs = platform_config.get("COMPRESS_REMOTE_LOGS", False)
-            self.remote_logs_compress_type = platform_config.get("REMOTE_LOGS_COMPRESS_TYPE", "gzip")
-            self.compression_level = platform_config.get("COMPRESSION_LEVEL", 9)
+            self.compress_remote_logs = self.platform_config.get("COMPRESS_REMOTE_LOGS", False)
+            self.remote_logs_compress_type = self.platform_config.get("REMOTE_LOGS_COMPRESS_TYPE", "gzip")
+            self.compression_level = self.platform_config.get("COMPRESSION_LEVEL", 9)
 
         self.log_queue_size = log_queue_size
         self.remote_log_dir: str = ""
         self.has_scheduler = True
-        self.IO_SAFE_WAIT = int(
-            self.config.get("PLATFORMS", {}).get(self.name.upper(), {}).get("IO_SAFE_WAIT", self.IO_SAFE_WAIT))
+        self.IO_SAFE_WAIT = int(self.platform_config.get("IO_SAFE_WAIT", self.IO_SAFE_WAIT))
 
     @classmethod
     def update_workers(cls, event_worker):
@@ -404,6 +402,11 @@ class Platform(ABC):
     def root_dir(self, value):
         self._root_dir = value
 
+    @property
+    def platform_config(self) -> dict:
+        """Defining the config of a platform as a property facilitating its use and reducing code."""
+        return self.config.get("PLATFORMS", {}).get(self.name.upper(), {})
+
     def prepare_submission(self, as_conf: 'AutosubmitConfig', job_list: 'JobList',
                            packages_to_submit: list['JobPackageBase'],
                            inspect=False, only_wrappers=False) -> tuple[
@@ -483,9 +486,7 @@ class Platform(ABC):
 
         :return: platform's object
         """
-        if self._serial_platform is None:
-            return self
-        return self._serial_platform
+        return self._serial_platform or self
 
     @serial_platform.setter
     def serial_platform(self, value: 'Platform'):
@@ -553,22 +554,40 @@ class Platform(ABC):
         self._serial_queue = value
 
     @property
-    def allow_arrays(self):
-        if type(self._allow_arrays) is bool and self._allow_arrays:
-            return True
-        return self._allow_arrays == "true"
+    def allow_arrays(self) -> bool:
+        """Whether array jobs are allowed.
+
+        :autosubmit-group: JOB
+        """
+        return (
+            self._allow_arrays
+            if isinstance(self._allow_arrays, bool)
+            else str(self._allow_arrays).lower() == "true"
+        )
 
     @property
-    def allow_wrappers(self):
-        if type(self._allow_wrappers) is bool and self._allow_wrappers:
-            return True
-        return self._allow_wrappers == "true"
+    def allow_wrappers(self) -> bool:
+        """Whether wrappers are allowed.
+
+        :autosubmit-group: JOB
+        """
+        return (
+            self._allow_wrappers
+            if isinstance(self._allow_wrappers, bool)
+            else str(self._allow_wrappers).lower() == "true"
+        )
 
     @property
-    def allow_python_jobs(self):
-        if type(self._allow_python_jobs) is bool and self._allow_python_jobs:
-            return True
-        return self._allow_python_jobs == "true"
+    def allow_python_jobs(self) -> bool:
+        """Whether python jobs are allowed.
+
+        :autosubmit-group: JOB
+        """
+        return (
+            self._allow_python_jobs
+            if isinstance(self._allow_python_jobs, bool)
+            else str(self._allow_python_jobs).lower() == "true"
+        )
 
     def add_parameters(self, as_conf: 'AutosubmitConfig'):
         """Add parameters for the current platform to the given parameters list.
@@ -675,7 +694,7 @@ class Platform(ABC):
         if not job.max_checkpoint_step:
             job.max_checkpoint_step = 0
         if job.current_checkpoint_step < job.max_checkpoint_step:
-            remote_checkpoint_path = f'{self.get_files_path()}/CHECKPOINT_'
+            remote_checkpoint_path = f'{self.files_path}/CHECKPOINT_'
             self.get_file(f'{remote_checkpoint_path}{str(job.current_checkpoint_step)}', False, ignore_log=True)
             while self.check_file_exists(
                     f'{remote_checkpoint_path}{str(job.current_checkpoint_step)}') and job.current_checkpoint_step < job.max_checkpoint_step:
@@ -741,18 +760,21 @@ class Platform(ABC):
         Log.warning(f'{job.name}_STAT_{str(attempt)} file not found')
         return False
 
-    @autosubmit_parameter(name='current_logdir')
-    def get_files_path(self) -> str:
+    @property
+    def files_path(self) -> str:
         """The platform's LOG directory.
 
-        :return: platform's LOG directory
-        :rtype: str
+        :autosubmit-group: JOB
         """
-        # Circular import -- bad class design, probably can be re-designed.
         if self.TYPE is PlatformType.LOCAL:
-            path = Path(self.root_dir, self.config.get("LOCAL_TMP_DIR", ""), f'LOG_{self.expid}')
+            path = Path(
+                self.root_dir,
+                self.config.get("LOCAL_TMP_DIR", ""),
+                f"LOG_{self.expid}",
+            )
         else:
             path = Path(self.remote_log_dir)
+
         return str(path)
 
     def check_all_jobs(self, job_list: list['Job'], as_conf: 'AutosubmitConfig', retries: int = 5):
@@ -839,9 +861,6 @@ class Platform(ABC):
         This method sets the cleanup event to signal the log recovery process to finish,
         waits for the process to join with a timeout, and then resets all related variables.
         """
-        if self.ctx is None:
-            self.ctx = self.get_mp_context()
-
         if self.cleanup_event is not None:
             self.cleanup_event.set()
 
@@ -917,9 +936,6 @@ class Platform(ABC):
 
     def prepare_process(self) -> 'Platform':
         new_platform = self.create_a_new_copy()
-        if self.ctx is None:
-            self.ctx = self.get_mp_context()
-
         # Allocate Events only on the first call.
         # On subsequent respawn cycles the events are reused (cleared by clean_log_recovery_process)
         if self.work_event is None:
@@ -953,10 +969,6 @@ class Platform(ABC):
             Log.error(f"Failed to start log recovery process: {e}")
             self.log_recovery_process = None
 
-    def get_mp_context(self):
-        if not hasattr(self, 'ctx') or self.ctx is None:
-            self.ctx = multiprocessing.get_context('spawn')
-        return self.ctx
 
     def join_new_process(self):
         # Check if the process is finished; prevent zombies
@@ -981,7 +993,6 @@ class Platform(ABC):
                                                                                      "false")).lower() == "false"):
             if as_conf and as_conf.misc_data.get("AS_COMMAND", "").lower() == "run":
                 self.log_retrieval_process_active = True
-                self.ctx = self.get_mp_context()
                 new_platform = self.prepare_process()
                 self.create_new_process(new_platform, as_conf)
                 self.join_new_process()
