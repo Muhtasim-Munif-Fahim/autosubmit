@@ -105,28 +105,46 @@ class AutosubmitExperimentFixture(Protocol):
     ) -> AutosubmitExperiment:
         ...
 
+class GetNextExpid(Protocol):
+    def __call__(self, experiment_type: str = "t") -> str: ...
 
-@pytest.fixture(scope='session')
-def get_next_expid(tmp_path_factory: "TempPathFactory") -> Callable[[], str]:
+
+@pytest.fixture(scope="session")
+def get_next_expid(tmp_path_factory: "TempPathFactory") -> GetNextExpid:
     """Returns a factory to retrieve the next Autosubmit experiment ID.
 
     The returned experiment ID by the factory function is guaranteed to
     be unique throughout the whole test session, even with multiple
     pytest-xdist processes.
     """
-
     shared_tmp_dir = tmp_path_factory.getbasetemp()
-    expid_file = shared_tmp_dir / "expid_current.txt"
-    if expid_file.exists():
-        expid_file.unlink()
 
-    def _get_next_expid() -> str:
-        current_expid = 't000'
+    expid_files = {
+        "t": shared_tmp_dir / "expid_current_test.txt",
+        "o": shared_tmp_dir / "expid_current_oper.txt",
+        "a": shared_tmp_dir / "expid_current.txt",
+    }
+
+    for expid_file in expid_files.values():
         if expid_file.exists():
-            current_expid = expid_file.read_text()
+            expid_file.unlink()
+
+    def _get_next_expid(experiment_type="t") -> str:
+        """Get the next expid, depending on the experiment type.
+
+        Defaults to "t", test experiments.
+
+        Backed by files on the pytest session folder.
+
+        :return: The next experiment ID, for the experiment type requested.
+        """
+        current_expid = f"{experiment_type}000"
+        expid_file_requested = expid_files[experiment_type]
+        if expid_file_requested.exists():
+            current_expid = expid_file_requested.read_text()
 
         next_expid = next_experiment_id(current_id=current_expid)
-        expid_file.write_text(next_expid)
+        expid_file_requested.write_text(next_expid)
 
         return next_expid
 

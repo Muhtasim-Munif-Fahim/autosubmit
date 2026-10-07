@@ -150,17 +150,17 @@ def create_git_repository_and_server(
 
 
 @pytest.mark.parametrize(
-    "commit_git,push_git,commit_submodule,push_submodule,expected",
+    "experiment_type,commit_git,push_git,commit_submodule,push_submodule,expected",
     [
-        (False, False, False, False, pytest.raises(AutosubmitCritical)),
-        (False, False, True, False, pytest.raises(AutosubmitCritical)),
-        (False, False, True, True, pytest.raises(AutosubmitCritical)),
-        (True, False, True, True, pytest.raises(AutosubmitCritical)),
-        (True, True, True, True, does_not_raise()),
-        (False, False, False, False, does_not_raise()),
-        (False, False, True, False, does_not_raise()),
-        (False, False, True, True, does_not_raise()),
-        (True, False, True, True, does_not_raise()),
+        ("o", False, False, False, False, pytest.raises(AutosubmitCritical)),
+        ("o", False, False, True, False, pytest.raises(AutosubmitCritical)),
+        ("o", False, False, True, True, pytest.raises(AutosubmitCritical)),
+        ("o", True, False, True, True, pytest.raises(AutosubmitCritical)),
+        ("o", True, True, True, True, does_not_raise()),
+        ("a", False, False, False, False, does_not_raise()),
+        ("a", False, False, True, False, does_not_raise()),
+        ("a", False, False, True, True, does_not_raise()),
+        ("a", True, False, True, True, does_not_raise()),
     ],
     ids=[
         "NOK Did not commit nor push repository and submodule of an operational experiment",
@@ -183,6 +183,7 @@ def create_git_repository_and_server(
 @pytest.mark.git
 @pytest.mark.docker
 def test_git_submodules_dirty(
+    experiment_type: str,
     commit_git: bool,
     push_git: bool,
     commit_submodule: bool,
@@ -203,7 +204,7 @@ def test_git_submodules_dirty(
     """
     _, git_repos_path, git_url = git_server  # type: Container, Path, str # type: ignore
 
-    expid = get_next_expid()
+    expid = get_next_expid(experiment_type=experiment_type)
 
     git_repo = git_repos_path / f"git_repository_{expid}"
     git_submodule = git_repos_path / f"git_submodule_{expid}"
@@ -227,8 +228,9 @@ def test_git_submodules_dirty(
     experiment_data["GIT"]["PROJECT_SUBMODULES"] = submodule_name
     experiment_data["LOCAL"] = {"PROJECT_PATH": str(git_repo)}
 
-    as_exp = autosubmit_exp(experiment_data=experiment_data)
+    as_exp = autosubmit_exp(expid=expid, experiment_data=experiment_data)
     as_conf = as_exp.as_conf
+    as_conf.reload(force_load=True)
     proj_dir = Path(as_conf.get_project_dir())
 
     with open(proj_dir / submodule_name / "a_file.yaml", "w") as f:
